@@ -1,0 +1,6 @@
+.DS_Store
+.vscode
+.zed
+target/
+Cargo.lock
+css/
