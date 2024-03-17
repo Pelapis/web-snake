@@ -1,6 +1,0 @@
-body {
-    display: grid;
-    grid-template-columns: 1fr;
-    justify-items: center;
-    text-align: center;
-}

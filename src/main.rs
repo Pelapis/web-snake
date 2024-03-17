@@ -17,7 +17,8 @@ fn App() -> impl IntoView {
         <main>
             <canvas width={format!("{}", WIDTH)} height={format!("{}", HEIGHT)} />
         </main>
-        <caption>"上下左右键或者 w a s d 键控制蛇的移动。"</caption>
+        <caption>"手机：点击画面上下左右"</caption>
+        <caption>"电脑：上下左右键或wasd键"</caption>
         <footer>
             "Made by Cavendish."
         </footer>
@@ -29,7 +30,7 @@ fn main() {
     mount_to_body(App);
 
     // 获取 canvas 上下文
-    let ctx: web_sys::CanvasRenderingContext2d = web_sys::window()
+    let canvas = web_sys::window()
         .unwrap()
         .document()
         .unwrap()
@@ -37,11 +38,12 @@ fn main() {
         .unwrap()
         .unwrap()
         .dyn_into::<web_sys::HtmlCanvasElement>()
-        .unwrap()
+        .unwrap();
+    let ctx = canvas
         .get_context("2d")
         .unwrap()
         .unwrap()
-        .dyn_into()
+        .dyn_into::<web_sys::CanvasRenderingContext2d>()
         .unwrap();
 
     // 初始化世界
@@ -90,7 +92,45 @@ fn main() {
         .unwrap();
     closure.forget();
 
-    let interval = 500;
+    // 监听手机触摸事件，点击canvas画布的左右上下四分之一区域，分别对应上下左右四个方向
+    let closure = Closure::wrap(Box::new({
+        move |event: web_sys::TouchEvent| {
+            let touch = event.touches().get(0).unwrap();
+            let client_x = touch.client_x() as f64;
+            let client_y = touch.client_y() as f64;
+            let canvas_rect = canvas.get_bounding_client_rect();
+            // 写出对角线方程，判断点击的位置
+            // (x, y) (right, bottom)
+            // y - y0 / x - x0 = height / width
+            // y = height / width * (x - x0) + y0
+            // (right, y) (x, bottom)
+            // y - y0) / (x - right) = - height / width
+            // y = - height / width * (x - right) + y0
+            match (client_x, client_y) {
+                (x, y) if y <= canvas.height() as f64 / canvas.width() as f64 * (x - canvas_rect.x()) + canvas_rect.y() => match (client_x, client_y) {
+                    (x, y) if y <= canvas.height() as f64 / canvas.width() as f64 * (canvas_rect.right() - x) + canvas_rect.y() => set_pressed_key.set(Direction::Up),
+                    (x, y) if y > canvas.height() as f64 / canvas.width() as f64 * (canvas_rect.right() - x) + canvas_rect.y() => set_pressed_key.set(Direction::Right),
+                    _ => {}
+                }
+                (x, y) if y > canvas.height() as f64 / canvas.width() as f64 * (x - canvas_rect.x()) + canvas_rect.y() => match (client_x, client_y) {
+                    (x, y) if y <= canvas.height() as f64 / canvas.width() as f64 * (canvas_rect.right() - x) + canvas_rect.y() => set_pressed_key.set(Direction::Left),
+                    (x, y) if y > canvas.height() as f64 / canvas.width() as f64 * (canvas_rect.right() - x) + canvas_rect.y() => set_pressed_key.set(Direction::Down),
+                    _ => {}
+                }
+                _ => {}
+            }
+        }
+    }) as Box<dyn FnMut(_)>);
+    web_sys::window()
+        .unwrap()
+        .document()
+        .unwrap()
+        .add_event_listener_with_callback("touchstart", closure.as_ref().unchecked_ref())
+        .unwrap();
+    closure.forget();
+
+    // 定时器
+    let interval = 400;
 
     // 每隔一段时间更新一次世界
     let closure = Closure::wrap(Box::new(move || {

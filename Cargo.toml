@@ -18,4 +18,8 @@ features = [
   'HtmlCanvasElement',
   'Window',
   'KeyboardEvent',
+  'TouchEvent',
+  'TouchList',
+  'Touch',
+  'DomRect',
 ]
