@@ -30,10 +30,7 @@ fn main() {
     mount_to_body(App);
 
     // 获取 canvas 上下文
-    let canvas = web_sys::window()
-        .unwrap()
-        .document()
-        .unwrap()
+    let canvas = gloo::utils::document()
         .query_selector("canvas")
         .unwrap()
         .unwrap()
@@ -72,68 +69,86 @@ fn main() {
     let (pressed_key, set_pressed_key) = create_signal(Direction::None);
 
     // 监听键盘事件
-    let closure = Closure::wrap(Box::new({
-        move |event: web_sys::KeyboardEvent| {
-            let key = event.key();
-            match key.as_str() {
-                "ArrowUp" | "w" => set_pressed_key.set(Direction::Up),
-                "ArrowDown" | "s" => set_pressed_key.set(Direction::Down),
-                "ArrowLeft" | "a" => set_pressed_key.set(Direction::Left),
-                "ArrowRight" | "d" => set_pressed_key.set(Direction::Right),
-                _ => {}
-            }
+    gloo::events::EventListener::new(&gloo::utils::document_element(), "keydown", move |x| {
+        let event = x.dyn_ref::<web_sys::KeyboardEvent>().unwrap();
+        let key = event.key();
+        match key.as_str() {
+            "ArrowUp" | "w" => set_pressed_key.set(Direction::Up),
+            "ArrowDown" | "s" => set_pressed_key.set(Direction::Down),
+            "ArrowLeft" | "a" => set_pressed_key.set(Direction::Left),
+            "ArrowRight" | "d" => set_pressed_key.set(Direction::Right),
+            _ => {}
         }
-    }) as Box<dyn FnMut(_)>);
-    web_sys::window()
-        .unwrap()
-        .document()
-        .unwrap()
-        .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref())
-        .unwrap();
-    closure.forget();
+    })
+    .forget();
 
-    // 监听手机触摸事件，点击canvas画布的左右上下四分之一区域，分别对应上下左右四个方向
-    let closure = Closure::wrap(Box::new({
-        move |event: web_sys::TouchEvent| {
-            let touch = event.touches().get(0).unwrap();
-            let client_x = touch.client_x() as f64;
-            let client_y = touch.client_y() as f64;
-            let canvas_rect = canvas.get_bounding_client_rect();
-            // 写出对角线方程，判断点击的位置
-            // (x, y) (right, bottom)
-            // y - y0 / x - x0 = height / width
-            // y = height / width * (x - x0) + y0
-            // (right, y) (x, bottom)
-            // y - y0) / (x - right) = - height / width
-            // y = - height / width * (x - right) + y0
-            match (client_x, client_y) {
-                (x, y) if y <= canvas.height() as f64 / canvas.width() as f64 * (x - canvas_rect.x()) + canvas_rect.y() => match (client_x, client_y) {
-                    (x, y) if y <= canvas.height() as f64 / canvas.width() as f64 * (canvas_rect.right() - x) + canvas_rect.y() => set_pressed_key.set(Direction::Up),
-                    (x, y) if y > canvas.height() as f64 / canvas.width() as f64 * (canvas_rect.right() - x) + canvas_rect.y() => set_pressed_key.set(Direction::Right),
+    // 监听手机触摸事件，点击画布上下左右
+    gloo::events::EventListener::new(&gloo::utils::document_element(), "touchstart", move |x| {
+        let event = x.dyn_ref::<web_sys::TouchEvent>().unwrap();
+        let touch = event.touches().get(0).unwrap();
+        let client_x = touch.client_x() as f64;
+        let client_y = touch.client_y() as f64;
+        let canvas_rect = canvas.get_bounding_client_rect();
+        // 写出对角线方程，判断点击的位置
+        // (x, y) (right, bottom)
+        // y - y0 / x - x0 = height / width
+        // y = height / width * (x - x0) + y0
+        // (right, y) (x, bottom)
+        // y - y0) / (x - right) = - height / width
+        // y = - height / width * (x - right) + y0
+        match (client_x, client_y) {
+            (x, y)
+                if y <= canvas.height() as f64 / canvas.width() as f64 * (x - canvas_rect.x())
+                    + canvas_rect.y() =>
+            {
+                match (client_x, client_y) {
+                    (x, y)
+                        if y <= canvas.height() as f64 / canvas.width() as f64
+                            * (canvas_rect.right() - x)
+                            + canvas_rect.y() =>
+                    {
+                        set_pressed_key.set(Direction::Up)
+                    }
+                    (x, y)
+                        if y > canvas.height() as f64 / canvas.width() as f64
+                            * (canvas_rect.right() - x)
+                            + canvas_rect.y() =>
+                    {
+                        set_pressed_key.set(Direction::Right)
+                    }
                     _ => {}
                 }
-                (x, y) if y > canvas.height() as f64 / canvas.width() as f64 * (x - canvas_rect.x()) + canvas_rect.y() => match (client_x, client_y) {
-                    (x, y) if y <= canvas.height() as f64 / canvas.width() as f64 * (canvas_rect.right() - x) + canvas_rect.y() => set_pressed_key.set(Direction::Left),
-                    (x, y) if y > canvas.height() as f64 / canvas.width() as f64 * (canvas_rect.right() - x) + canvas_rect.y() => set_pressed_key.set(Direction::Down),
+            }
+            (x, y)
+                if y > canvas.height() as f64 / canvas.width() as f64 * (x - canvas_rect.x())
+                    + canvas_rect.y() =>
+            {
+                match (client_x, client_y) {
+                    (x, y)
+                        if y <= canvas.height() as f64 / canvas.width() as f64
+                            * (canvas_rect.right() - x)
+                            + canvas_rect.y() =>
+                    {
+                        set_pressed_key.set(Direction::Left)
+                    }
+                    (x, y)
+                        if y > canvas.height() as f64 / canvas.width() as f64
+                            * (canvas_rect.right() - x)
+                            + canvas_rect.y() =>
+                    {
+                        set_pressed_key.set(Direction::Down)
+                    }
                     _ => {}
                 }
-                _ => {}
             }
+            _ => {}
         }
-    }) as Box<dyn FnMut(_)>);
-    web_sys::window()
-        .unwrap()
-        .document()
-        .unwrap()
-        .add_event_listener_with_callback("touchstart", closure.as_ref().unchecked_ref())
-        .unwrap();
-    closure.forget();
+    })
+    .forget();
 
-    // 定时器
+    // 设置定时器，每隔一段时间更新一次世界
     let interval = 400;
-
-    // 每隔一段时间更新一次世界
-    let closure = Closure::wrap(Box::new(move || {
+    gloo::timers::callback::Interval::new(interval, move || {
         match pressed_key.get() {
             Direction::Up | Direction::Down => match snake.head_direction {
                 Direction::Left | Direction::Right => snake.head_direction = pressed_key.get(),
@@ -147,16 +162,8 @@ fn main() {
         };
         update_world(&mut snake, &mut world, &mut food);
         render_world(&ctx, &world);
-        set_pressed_key.set(Direction::None);
-    }) as Box<dyn FnMut()>);
-    web_sys::window()
-        .unwrap()
-        .set_interval_with_callback_and_timeout_and_arguments_0(
-            closure.as_ref().unchecked_ref(),
-            interval,
-        )
-        .unwrap();
-    closure.forget();
+    })
+    .forget();
 }
 
 // 画出网格
