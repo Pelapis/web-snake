@@ -86,20 +86,18 @@ fn main() {
     let interval = 400;
     gloo::timers::callback::Interval::new(interval, move || {
         // 取出最后一个键盘输入或手机触摸输入
-        let mut order_direction = Direction::None;
-        while let Ok(direction) = pressed_key.try_recv() {
-            order_direction = direction;
-        }
-        match order_direction {
-            Direction::Up | Direction::Down => match snake.head_direction {
-                Direction::Left | Direction::Right => snake.head_direction = order_direction,
-                _ => {}
+        match pressed_key.try_iter().last() {
+            Some(order_direction) => match order_direction {
+                Direction::Up | Direction::Down => match snake.head_direction {
+                    Direction::Left | Direction::Right => snake.head_direction = order_direction,
+                    _ => {}
+                },
+                Direction::Left | Direction::Right => match snake.head_direction {
+                    Direction::Up | Direction::Down => snake.head_direction = order_direction,
+                    _ => {}
+                },
             },
-            Direction::Left | Direction::Right => match snake.head_direction {
-                Direction::Up | Direction::Down => snake.head_direction = order_direction,
-                _ => {}
-            },
-            Direction::None => {}
+            None => {}
         };
         update_world(&mut snake, &mut world, &mut food);
         render_world(&ctx, &world);
@@ -187,7 +185,6 @@ enum Direction {
     Down,
     Left,
     Right,
-    None,
 }
 
 // 定义蛇结构
@@ -243,7 +240,6 @@ impl Snake {
                 x if x == CELL_NUMBER - 1 => head + 1 - CELL_NUMBER,
                 _ => head + 1,
             },
-            Direction::None => head,
         }
     }
 }
