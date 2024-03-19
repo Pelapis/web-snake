@@ -11,8 +11,7 @@ canvas {
 }
 
 @media (min-width: 768px) {
-    canvas{
-        width: auto;
-        height: auto;
+    canvas {
+        width: 65vh;
     }
 }

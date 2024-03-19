@@ -1,34 +1,11 @@
-use leptos::*;
 use rand::prelude::*;
 use wasm_bindgen::prelude::*;
 
 // 设定画布的宽高，以及网格的行列数，网格的颜色
-const WIDTH: i32 = 500;
-const HEIGHT: i32 = 500;
 const CELL_NUMBER: i32 = 25;
 const GRID_COLOR: &str = "#CCCCCC";
 
-#[component]
-fn App() -> impl IntoView {
-    view! {
-        <header>
-            <h1>"贪吃蛇"</h1>
-        </header>
-        <main>
-            <canvas width={format!("{}", WIDTH)} height={format!("{}", HEIGHT)} />
-        </main>
-        <caption>"手机：点击画面上下左右"</caption>
-        <caption>"电脑：上下左右键或wasd键"</caption>
-        <footer>
-            "Made by Cavendish."
-        </footer>
-    }
-}
-
 fn main() {
-    // 将 App 组件挂载到 body 上
-    mount_to_body(App);
-
     // 获取 canvas 上下文
     let canvas = gloo::utils::document()
         .query_selector("canvas")
@@ -66,17 +43,17 @@ fn main() {
     // 渲染世界
     render_world(&ctx, &world);
 
-    let (pressed_key, set_pressed_key) = create_signal(Direction::None);
-
+    let (mut sender, mut pressed_key) = futures::channel::mpsc::channel::<Direction>(1024);
+    let mut key_sender = sender.clone();
     // 监听键盘事件
     gloo::events::EventListener::new(&gloo::utils::document_element(), "keydown", move |x| {
         let event = x.dyn_ref::<web_sys::KeyboardEvent>().unwrap();
         let key = event.key();
         match key.as_str() {
-            "ArrowUp" | "w" => set_pressed_key.set(Direction::Up),
-            "ArrowDown" | "s" => set_pressed_key.set(Direction::Down),
-            "ArrowLeft" | "a" => set_pressed_key.set(Direction::Left),
-            "ArrowRight" | "d" => set_pressed_key.set(Direction::Right),
+            "ArrowUp" | "w" => key_sender.try_send(Direction::Up).unwrap(),
+            "ArrowDown" | "s" => key_sender.try_send(Direction::Down).unwrap(),
+            "ArrowLeft" | "a" => key_sender.try_send(Direction::Left).unwrap(),
+            "ArrowRight" | "d" => key_sender.try_send(Direction::Right).unwrap(),
             _ => {}
         }
     })
@@ -86,62 +63,21 @@ fn main() {
     gloo::events::EventListener::new(&gloo::utils::document_element(), "touchstart", move |x| {
         let event = x.dyn_ref::<web_sys::TouchEvent>().unwrap();
         let touch = event.touches().get(0).unwrap();
-        let client_x = touch.client_x() as f64;
-        let client_y = touch.client_y() as f64;
+        let x = touch.client_x() as f64;
+        let y = touch.client_y() as f64;
         let canvas_rect = canvas.get_bounding_client_rect();
         // 写出对角线方程，判断点击的位置
-        // (x, y) (right, bottom)
-        // y - y0 / x - x0 = height / width
-        // y = height / width * (x - x0) + y0
-        // (right, y) (x, bottom)
-        // y - y0) / (x - right) = - height / width
-        // y = - height / width * (x - right) + y0
-        match (client_x, client_y) {
-            (x, y)
-                if y <= canvas.height() as f64 / canvas.width() as f64 * (x - canvas_rect.x())
-                    + canvas_rect.y() =>
-            {
-                match (client_x, client_y) {
-                    (x, y)
-                        if y <= canvas.height() as f64 / canvas.width() as f64
-                            * (canvas_rect.right() - x)
-                            + canvas_rect.y() =>
-                    {
-                        set_pressed_key.set(Direction::Up)
-                    }
-                    (x, y)
-                        if y > canvas.height() as f64 / canvas.width() as f64
-                            * (canvas_rect.right() - x)
-                            + canvas_rect.y() =>
-                    {
-                        set_pressed_key.set(Direction::Right)
-                    }
-                    _ => {}
-                }
-            }
-            (x, y)
-                if y > canvas.height() as f64 / canvas.width() as f64 * (x - canvas_rect.x())
-                    + canvas_rect.y() =>
-            {
-                match (client_x, client_y) {
-                    (x, y)
-                        if y <= canvas.height() as f64 / canvas.width() as f64
-                            * (canvas_rect.right() - x)
-                            + canvas_rect.y() =>
-                    {
-                        set_pressed_key.set(Direction::Left)
-                    }
-                    (x, y)
-                        if y > canvas.height() as f64 / canvas.width() as f64
-                            * (canvas_rect.right() - x)
-                            + canvas_rect.y() =>
-                    {
-                        set_pressed_key.set(Direction::Down)
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
+        let up_line1 = y
+            <= canvas.height() as f64 / canvas.width() as f64 * (x - canvas_rect.x())
+                + canvas_rect.y();
+        let up_line2 = y
+            <= canvas.height() as f64 / canvas.width() as f64 * (canvas_rect.right() - x)
+                + canvas_rect.y();
+        match (up_line1, up_line2) {
+            (true, true) => sender.try_send(Direction::Up).unwrap(),
+            (true, false) => sender.try_send(Direction::Right).unwrap(),
+            (false, true) => sender.try_send(Direction::Left).unwrap(),
+            (false, false) => sender.try_send(Direction::Down).unwrap(),
         }
     })
     .forget();
@@ -149,13 +85,18 @@ fn main() {
     // 设置定时器，每隔一段时间更新一次世界
     let interval = 400;
     gloo::timers::callback::Interval::new(interval, move || {
-        match pressed_key.get() {
+        // 取出最后一个键盘输入或手机触摸输入
+        let mut order_direction = Direction::None;
+        while let Ok(direction) = pressed_key.try_next() {
+            order_direction = direction.unwrap();
+        }
+        match order_direction {
             Direction::Up | Direction::Down => match snake.head_direction {
-                Direction::Left | Direction::Right => snake.head_direction = pressed_key.get(),
+                Direction::Left | Direction::Right => snake.head_direction = order_direction,
                 _ => {}
             },
             Direction::Left | Direction::Right => match snake.head_direction {
-                Direction::Up | Direction::Down => snake.head_direction = pressed_key.get(),
+                Direction::Up | Direction::Down => snake.head_direction = order_direction,
                 _ => {}
             },
             Direction::None => {}
@@ -172,14 +113,14 @@ fn draw_grid(ctx: &web_sys::CanvasRenderingContext2d, grid_color: &str, cell_num
     ctx.set_stroke_style(&JsValue::from(grid_color));
 
     // 画出竖线
-    for i in (0..=cell_number).map(|i| i * WIDTH as i32 / cell_number) {
+    for i in (0..=cell_number).map(|i| i * ctx.canvas().unwrap().width() as i32 / cell_number) {
         ctx.move_to(i as f64, 0.0);
-        ctx.line_to(i as f64, HEIGHT as f64);
+        ctx.line_to(i as f64, ctx.canvas().unwrap().height() as f64);
     }
     // 画出横线
-    for i in (0..=cell_number).map(|i| i * HEIGHT as i32 / cell_number) {
+    for i in (0..=cell_number).map(|i| i * ctx.canvas().unwrap().height() as i32 / cell_number) {
         ctx.move_to(0.0, i as f64);
-        ctx.line_to(WIDTH as f64, i as f64);
+        ctx.line_to(ctx.canvas().unwrap().width() as f64, i as f64);
     }
 
     ctx.stroke();
@@ -191,10 +132,10 @@ fn draw_cells(ctx: &web_sys::CanvasRenderingContext2d, world: &[bool], cell_numb
         for x in 0..cell_number {
             if world[(y * cell_number + x) as usize] {
                 ctx.fill_rect(
-                    (x * WIDTH / cell_number) as f64,
-                    (y * HEIGHT / cell_number) as f64,
-                    (WIDTH / cell_number) as f64,
-                    (HEIGHT / cell_number) as f64,
+                    (x * ctx.canvas().unwrap().width() as i32 / cell_number) as f64,
+                    (y * ctx.canvas().unwrap().height() as i32 / cell_number) as f64,
+                    (ctx.canvas().unwrap().width() as i32 / cell_number) as f64,
+                    (ctx.canvas().unwrap().height() as i32 / cell_number) as f64,
                 );
             }
         }
@@ -204,7 +145,12 @@ fn draw_cells(ctx: &web_sys::CanvasRenderingContext2d, world: &[bool], cell_numb
 // 渲染世界
 fn render_world(ctx: &web_sys::CanvasRenderingContext2d, world: &Vec<bool>) {
     // 清空画布
-    ctx.clear_rect(0.0, 0.0, WIDTH as f64, HEIGHT as f64);
+    ctx.clear_rect(
+        0.0,
+        0.0,
+        ctx.canvas().unwrap().width() as f64,
+        ctx.canvas().unwrap().height() as f64,
+    );
     // 画出网格
     draw_grid(&ctx, GRID_COLOR, CELL_NUMBER);
     // 渲染世界
