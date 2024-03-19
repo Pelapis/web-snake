@@ -43,8 +43,8 @@ fn main() {
     // 渲染世界
     render_world(&ctx, &world);
 
-    let (mut sender, mut pressed_key) = futures::channel::mpsc::channel::<Direction>(1024);
-    let mut key_sender = sender.clone();
+    let (sender, pressed_key) = std::sync::mpsc::sync_channel::<Direction>(1024);
+    let key_sender = sender.clone();
     // 监听键盘事件
     gloo::events::EventListener::new(&gloo::utils::document_element(), "keydown", move |x| {
         let event = x.dyn_ref::<web_sys::KeyboardEvent>().unwrap();
@@ -87,8 +87,8 @@ fn main() {
     gloo::timers::callback::Interval::new(interval, move || {
         // 取出最后一个键盘输入或手机触摸输入
         let mut order_direction = Direction::None;
-        while let Ok(direction) = pressed_key.try_next() {
-            order_direction = direction.unwrap();
+        while let Ok(direction) = pressed_key.try_recv() {
+            order_direction = direction;
         }
         match order_direction {
             Direction::Up | Direction::Down => match snake.head_direction {
