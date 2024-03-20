@@ -11,15 +11,12 @@ fn main() {
         .query_selector("canvas")
         .unwrap()
         .unwrap()
-        .dyn_into::<web_sys::HtmlCanvasElement>()
-        .unwrap();
+        .unchecked_into::<web_sys::HtmlCanvasElement>();
     let ctx = canvas
         .get_context("2d")
         .unwrap()
         .unwrap()
-        .dyn_into::<web_sys::CanvasRenderingContext2d>()
-        .unwrap();
-
+        .unchecked_into::<web_sys::CanvasRenderingContext2d>();
     // 初始化世界
     let mut world = vec![false; CELL_NUMBER.pow(2) as usize];
     // 初始化蛇
@@ -47,7 +44,7 @@ fn main() {
     let key_sender = sender.clone();
     // 监听键盘事件
     gloo::events::EventListener::new(&gloo::utils::document_element(), "keydown", move |x| {
-        let event = x.dyn_ref::<web_sys::KeyboardEvent>().unwrap();
+        let event = x.unchecked_ref::<web_sys::KeyboardEvent>();
         let key = event.key();
         match key.as_str() {
             "ArrowUp" | "w" => key_sender.try_send(Direction::Up).unwrap(),
@@ -61,7 +58,7 @@ fn main() {
 
     // 监听手机触摸事件，点击画布上下左右
     gloo::events::EventListener::new(&gloo::utils::document_element(), "touchstart", move |x| {
-        let event = x.dyn_ref::<web_sys::TouchEvent>().unwrap();
+        let event = x.unchecked_ref::<web_sys::TouchEvent>();
         let touch = event.touches().get(0).unwrap();
         let x = touch.client_x() as f64;
         let y = touch.client_y() as f64;
