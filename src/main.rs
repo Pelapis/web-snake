@@ -222,7 +222,7 @@ impl Snake {
     fn update_body(&head: &i32, &direction: &Direction) -> i32 {
         match direction {
             Direction::Up => match head / CELL_NUMBER {
-                x if x == 0 => head - CELL_NUMBER + CELL_NUMBER.pow(2),
+                0 => head - CELL_NUMBER + CELL_NUMBER.pow(2),
                 _ => head - CELL_NUMBER,
             },
             Direction::Down => match head / CELL_NUMBER {
